@@ -48,3 +48,22 @@ def play(kind, log=print):
         led.show()
     except Exception as e:  # noqa: BLE001
         log(f'안내 효과 실패: {e}')
+
+
+def main():
+    """효과만 따로 시험 (ROS 필요 없음):  ros2 run fleet_agent guide_effect welcome|arrived|both"""
+    import sys
+    kinds = sys.argv[1:] or ['both']
+    for k in kinds:
+        for kind in (['welcome', 'arrived'] if k == 'both' else [k]):
+            if kind not in ('welcome', 'arrived'):
+                sys.exit(f'모르는 효과: {kind} (welcome / arrived / both)')
+            print(f'▶ {kind}: LCD {"WELCOME!" if kind == "welcome" else "ARRIVED!"} 얼굴 · LED 노랑 · 부저 멜로디')
+            t0 = time.monotonic()
+            play(kind)
+            print(f'  끝 ({time.monotonic() - t0:.1f}초). LCD가 그대로면 정상 (효과 뒤 LCD는 다음 문구까지 유지)')
+            time.sleep(0.5)
+
+
+if __name__ == '__main__':
+    main()

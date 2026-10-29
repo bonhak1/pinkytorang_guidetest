@@ -27,6 +27,10 @@
   <arg name="use_guide" default="false"/>   <!-- 안내 손님 확인 노드 (카메라 토픽 필요) -->
   <arg name="guide_model" default="$(find-pkg-share fleet_agent)/models/best.pt"/>   <!-- YOLO. "" = 확인 없이 OK -->
   <arg name="spin_deg" default="0"/>
+  <arg name="fake_guide" default="false"/>      <!-- 안내 시험: 카메라 없이 가짜 guide (use_guide:=false로) -->
+  <arg name="guide_lost_at" default=""/>        <!-- fake_guide: 이 노드 확인에서 못 찾음 (예: N3) -->
+  <arg name="guide_greet_fail" default="false"/>
+  <arg name="guide_delay" default="1.0"/>
   <arg name="use_ir" default="true"/>         <!-- 바닥 센서 노드 (pinky_sensor_adc main_node, P1 E자 테이프) -->
   <arg name="use_docking" default="false"/>   <!-- 정밀 정차 (도킹 · 언도킹 · 테이프). 켜면 precision_stops도 같이 -->
   <arg name="precision_stops" default=""/>    <!-- 예: $(find-pkg-share fleet_msgs)/docs/precision_stops.yaml -->   <!-- 초기 위치 뒤 제자리 회전. 360 = 한 바퀴 (도킹 없이 N 노드에서 켤 때) -->
@@ -57,6 +61,10 @@
       <arg name="start_node" value="$(var start_node)"/>
       <arg name="use_guide" value="$(var use_guide)"/>
       <arg name="guide_model" value="$(var guide_model)"/>
+      <arg name="fake_guide" value="$(var fake_guide)"/>
+      <arg name="guide_lost_at" value="$(var guide_lost_at)"/>
+      <arg name="guide_greet_fail" value="$(var guide_greet_fail)"/>
+      <arg name="guide_delay" value="$(var guide_delay)"/>
       <arg name="use_docking" value="$(var use_docking)"/>
       <arg name="precision_stops" value="$(var precision_stops)"/>
     </include>

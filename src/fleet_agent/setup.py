@@ -29,7 +29,14 @@ setup(
             'obstacle_node = fleet_agent.obstacle_node:main',
             'initial_pose = fleet_agent.initial_pose:main',
             'node_tour = fleet_agent.node_tour:main',
-            'guide_node = fleet_agent.guide_node:main',         # 안내: 카메라 YOLO 손님 확인 · 효과           # 시험: 서버 없이 노드 순회 (Nav2 node to node)
+            'guide_node = fleet_agent.guide_node:main',         # 안내: 카메라 YOLO 손님 확인 · 효과
+            # ---- 안내 시험 (GUIDE_TEST.md)
+            'guide_run = fleet_agent.guide_run:main',           # 서버 없이 안내 주행 (실제 로봇)
+            'guide_sim = fleet_agent.guide_sim:main',           # PC 시뮬레이터 (ROS · 로봇 없이 Driver)
+            'guide_check = fleet_agent.guide_check:main',       # guide_node 단독 (greet / watch / arrive / 취소)
+            'fake_guide = fleet_agent.fake_guide:main',         # 카메라 없이 손님 결과를 정하는 가짜 guide
+            'detect_view = fleet_agent.detect_view:main',       # YOLO 인식 튜닝 (conf · 거리)
+            'guide_effect = fleet_agent.guide_effects:main',    # LCD · LED · 부저 효과만
             'marker_dock = fleet_agent.docking.marker_dock:main',   # 혼자 실행: --calibrate / --record / --dry-run
             'marker_align = fleet_agent.docking.marker_align:main', # 혼자 실행: 정렬 기준 --record (undock의 align)
         ],

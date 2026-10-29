@@ -8,6 +8,8 @@
   안내 손님 확인(카메라 YOLO): use_guide:=true   (모델 기본값 = 패키지에 든 models/best.pt)
     다른 모델: guide_model:=<모델.pt>,  모델 없이 흐름만 시험: guide_model:=""
     guide 노드가 없으면 fleet_agent는 손님 확인을 건너뛰고 바로 진행한다. 모델이 없으면 guide 노드가 바로 OK
+  안내 시험 (카메라 없이 손님 결과를 정함): fake_guide:=true guide_lost_at:=N3 [guide_greet_fail:=true]
+    use_guide와 같이 켜지 말 것 (둘 다 /guide/result를 보냄)
 -->
 <launch>
   <arg name="robot_id" default="pinky1"/>
@@ -17,6 +19,10 @@
   <arg name="use_docking" default="false"/>
   <arg name="use_guide" default="false"/>
   <arg name="guide_model" default="$(find-pkg-share fleet_agent)/models/best.pt"/>   <!-- YOLO 모델. "" = 손님 확인 없이 OK -->
+  <arg name="fake_guide" default="false"/>      <!-- 시험: guide_node 대신 가짜 (GUIDE_TEST.md) -->
+  <arg name="guide_lost_at" default=""/>        <!-- fake_guide: 이 노드(들) 확인에서 못 찾음. 예: N3 또는 N1,N3 -->
+  <arg name="guide_greet_fail" default="false"/> <!-- fake_guide: 입구 인사에서 손님 안 옴 -->
+  <arg name="guide_delay" default="1.0"/>        <!-- fake_guide: 결과까지 초 -->
 
   <node pkg="fleet_agent" exec="fleet_agent" name="fleet_agent" output="screen">
     <param from="$(var params)"/>
@@ -30,6 +36,11 @@
   <node pkg="fleet_agent" exec="guide_node" name="guide" output="screen" if="$(var use_guide)">
     <param from="$(var params)"/>
     <param name="model_path" value="$(var guide_model)"/>
+  </node>
+  <node pkg="fleet_agent" exec="fake_guide" name="guide" output="screen" if="$(var fake_guide)">
+    <param name="lost_at" value="$(var guide_lost_at)" type="str"/>
+    <param name="greet_fail" value="$(var guide_greet_fail)"/>
+    <param name="delay" value="$(var guide_delay)"/>
   </node>
   <node pkg="fleet_agent" exec="obstacle_node" name="obstacle" output="screen">
     <param from="$(var params)"/>
