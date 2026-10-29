@@ -38,9 +38,17 @@ obstacle:
     dynamic_move_m: 0.04
     static_sec: 2.0
 
+camera:
+  ros__parameters:                    # camera_node: 카메라를 혼자 열고 발행 (docking · guide · detect_view가 구독)
+    width: 640                        # marker_dock 보정(FX) 기준 크기. 바꾸면 marker_dock --calibrate 다시
+    height: 480
+    fps: 15.0
+    rotate_180: true                  # 카메라가 거꾸로 달림 -> 똑바로 돌려서 발행 (구독하는 쪽은 안 돌림)
+    publish_compressed: false         # true = /camera/image_raw/compressed (PC에서 rqt로 볼 때)
+
 guide:
   ros__parameters:
-    camera_topic: /camera/image_raw   # sensor_msgs/Image (bgr8 / rgb8)
+    camera_topic: /camera/image_raw   # sensor_msgs/Image (bgr8 / rgb8). camera_node가 발행
     camera_compressed: false          # true = sensor_msgs/CompressedImage
     class_name: toy_person            # YOLO 클래스 이름 (손님). models/best.pt = yolov8n: toy_person / toy_car / cone
     conf: 0.5

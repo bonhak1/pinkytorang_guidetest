@@ -67,6 +67,15 @@ ros2 run fleet_agent guide_effect welcome      # 또는 arrived / both
 
 ### 1-2. 카메라 + YOLO 인식 튜닝
 
+카메라는 `camera_node` **하나만** 열고 `/camera/image_raw`로 발행한다. guide · docking · detect_view는 구독만 한다.
+`robot_system.launch.xml` / `fleet_agent.launch.xml`이 `use_camera:=true`(기본)로 같이 띄운다.
+혼자 띄우려면 `ros2 run fleet_agent camera_node --ros-args --params-file <fleet_agent.yaml>`.
+
+- [ ] `ros2 topic hz /camera/image_raw` 가 약 15 Hz
+- [ ] 영상이 똑바로 섬 (거꾸로면 `fleet_agent.yaml` camera `rotate_180`)
+- [ ] camera_node 로그에 카메라 열기 실패가 없음 (실패하면 다른 프로그램이 카메라를 쥐고 있음: 예전 marker_dock, 다른 카메라 노드)
+- [ ] 도킹도 같이 켜서(`use_docking:=true`) 안내 → 도킹 → 안내가 번갈아 돼도 영상이 계속 옴
+
 ```bash
 ros2 topic hz /camera/image_raw                  # 영상이 오는지 먼저
 ros2 run fleet_agent detect_view                 # 계속 돌리며 줄마다 conf · 박스 크기 · 연속 판정

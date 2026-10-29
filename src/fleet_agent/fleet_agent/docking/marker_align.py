@@ -36,6 +36,7 @@ def main():
     ap.add_argument('--size', type=float, default=0.025, help='마커 한 변 m (저장할 때, 5 cm = 0.05)')
     ap.add_argument('--record', action='store_true')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--direct', action='store_true', help='camera_node 없이 카메라를 직접 엶')
     args, _ = ap.parse_known_args()
     path = os.path.expanduser(f'~/align_{args.name}.json')
     md.load_cam_file()
@@ -56,7 +57,7 @@ def main():
     pub = node.create_publisher(Twist, '/cmd_vel', 10)
     tf_buf = Buffer()
     tf_listener = TransformListener(tf_buf, node)  # noqa: F841
-    cam = md.Camera(mid)
+    cam = md.Camera(mid) if getattr(args, 'direct', False) else md.Camera(mid, node, spin=True)   # 기본: camera_node 구독
     dk = md.Docker(node, pub, tf_buf, cam, moving=not (args.record or args.dry_run), spin=True)
     result = None
     try:

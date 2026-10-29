@@ -5,7 +5,8 @@ v4.3 (fleet_agent docking 노드에 넣기)
   - main() 안에 있던 이동 · 측정 함수와 도킹 순서를 Docker 클래스로 옮김 (동작 · 상수는 v4.2 그대로)
   - 혼자 실행(아래 명령)과 docking 노드 안 실행 둘 다 같은 Docker를 쓴다
     도킹 노드에서는 노드 executor가 TF를 받으므로 spin=False, 취소되면 Cancelled로 바로 멈춤
-  - Camera: 마커 ID를 도킹마다 바꿀 수 있게 (cam.id), 한 번 열어 두고 계속 씀
+  - Camera: 마커 ID를 도킹마다 바꿀 수 있게 (cam.id). 영상은 camera_node의 /camera/image_raw를 구독
+            (카메라를 안내 guide_node와 같이 쓰려고. 예전처럼 직접 열기 = --direct)
   - find_marker(): 마커가 안 보이면 제자리에서 30도씩 돌며 찾기 (align: N14 마커 5 -> 6)
 
 핵심: "마커는 멈춰서 정확히 재고, 움직이는 건 바퀴 주행거리(odom)로 한다"
@@ -232,25 +233,76 @@ def offset_from_line(pose, D, phi, gy, gth):
 # ---------------------------------------------------------------- 카메라
 
 class Camera:
-    def __init__(self, marker_id):
-        from picamera2 import Picamera2
+    """마커 측정용 영상. 기본은 camera_node가 발행하는 /camera/image_raw를 구독 (카메라를 다른 노드와 같이 씀)
+
+    Camera(marker_id, node, spin=False)  : 토픽 구독. node = 구독을 만들 rclpy 노드
+        spin=False : 노드 executor가 따로 돈다 (docking_node). 프레임은 콜백이 넣고 여기선 기다리기만
+        spin=True  : 혼자 실행 (marker_dock / marker_align 메인). 기다리는 동안 직접 spin_once
+    Camera(marker_id)                    : 예전처럼 picamera2를 직접 엶 (camera_node를 끈 상태에서만. --direct)
+    토픽 영상은 camera_node가 이미 180도 돌려서 내므로 여기서는 돌리지 않는다 (직접 열 때만 ROTATE_180)
+    """
+    FRAME_TIMEOUT = 1.5      # 새 프레임을 이만큼 못 받으면 카메라 문제로 봄
+
+    def __init__(self, marker_id, node=None, spin=False, topic='/camera/image_raw'):
         self.id = marker_id   # (v4.3) 도킹마다 바꿔도 됨
         params = cv2.aruco.DetectorParameters()
         params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX   # 모서리 서브픽셀
         params.cornerRefinementWinSize = 5
         self.det = cv2.aruco.ArucoDetector(
             cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11), params)
-        self.cam = Picamera2()
-        self.cam.configure(self.cam.create_preview_configuration(
-            main={'format': 'RGB888', 'size': (WIDTH, HEIGHT)}))
-        self.cam.start()
-        time.sleep(1.0)
         self.last_frame = None
+        self.node = node
+        self.spin = spin
+        self.cam = None
+        if node is None:                       # 예전 방식: 직접 엶
+            from picamera2 import Picamera2
+            self.cam = Picamera2()
+            self.cam.configure(self.cam.create_preview_configuration(
+                main={'format': 'RGB888', 'size': (WIDTH, HEIGHT)}))
+            self.cam.start()
+            time.sleep(1.0)
+            return
+        import threading
+        from rclpy.qos import qos_profile_sensor_data
+        from sensor_msgs.msg import Image
+        self._lock = threading.Lock()
+        self._new = threading.Event()
+        self._msg = None
+        self._seq = 0            # 받은 프레임 번호
+        self._used = 0           # 마지막으로 쓴 프레임 번호
+        self.topic = topic
+        self.sub = node.create_subscription(Image, topic, self._on_image, qos_profile_sensor_data)
+
+    def _on_image(self, msg):
+        with self._lock:
+            self._msg = msg
+            self._seq += 1
+        self._new.set()
+
+    def capture(self):
+        """새 프레임 하나 (BGR). 직전에 쓴 것보다 새 것을 기다린다 (예전 capture_array처럼, 움직인 뒤의 영상)"""
+        if self.cam is not None:
+            frame = self.cam.capture_array()
+            return cv2.rotate(frame, cv2.ROTATE_180) if ROTATE_180 else frame
+        end = time.monotonic() + self.FRAME_TIMEOUT
+        while True:
+            with self._lock:
+                msg, seq = self._msg, self._seq
+                if seq > self._used:
+                    self._used = seq
+                    self._new.clear()
+                    return image_to_bgr(msg)
+            left = end - time.monotonic()
+            if left <= 0:
+                raise RuntimeError(f'카메라 영상 없음 ({self.topic}): camera_node가 떠 있는지 확인')
+            if self.spin:
+                import rclpy
+                rclpy.spin_once(self.node, timeout_sec=min(0.05, left))
+            else:
+                self._new.wait(min(0.05, left))
 
     def measure(self):
-        frame = self.cam.capture_array()
-        if ROTATE_180:
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        frame = self.capture()
         self.last_frame = frame
         corners, ids, _ = self.det.detectMarkers(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
         if ids is None:
@@ -282,8 +334,21 @@ class Camera:
             cv2.imwrite(os.path.join(LOG_DIR, name + '.jpg'), self.last_frame)
 
     def close(self):
-        self.cam.stop()
-        self.cam.close()
+        if self.cam is not None:
+            self.cam.stop()
+            self.cam.close()
+        elif self.node is not None:
+            try:
+                self.node.destroy_subscription(self.sub)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def image_to_bgr(msg):
+    """sensor_msgs/Image (bgr8 / rgb8) -> BGR numpy"""
+    img = np.frombuffer(bytes(msg.data), np.uint8).reshape(msg.height, msg.step)[:, :msg.width * 3]
+    img = img.reshape(msg.height, msg.width, 3)
+    return img[:, :, ::-1].copy() if msg.encoding == 'rgb8' else img.copy()
 
 
 # ---------------------------------------------------------------- 이동 · 도킹 (v4.2 main 안의 함수들)
@@ -598,6 +663,8 @@ def main():
     ap.add_argument('--record', action='store_true', help='현재 위치를 도킹 목표로 저장')
     ap.add_argument('--calibrate', action='store_true', help='odom으로 카메라 거리 보정 (마커 정면 25~35 cm)')
     ap.add_argument('--dry-run', action='store_true', help='바퀴를 움직이지 않고 계획만 출력')
+    ap.add_argument('--direct', action='store_true',
+                    help='camera_node 없이 카메라를 직접 엶 (camera_node · docking 노드가 꺼져 있어야 함)')
     args, _ = ap.parse_known_args()   # ros2 run 이 붙이는 --ros-args는 무시
     target_file = os.path.expanduser(f'~/dock_target_{args.name}.json') if args.name else target_file_of(args.id)
 
@@ -614,7 +681,7 @@ def main():
     pub = node.create_publisher(Twist, '/cmd_vel', 10)
     tf_buf = Buffer()
     tf_listener = TransformListener(tf_buf, node)   # noqa: F841 (살아 있어야 TF를 받음)
-    cam = Camera(args.id)
+    cam = Camera(args.id) if args.direct else Camera(args.id, node, spin=True)   # 기본: camera_node 구독
     dk = Docker(node, pub, tf_buf, cam, moving=not (args.dry_run or args.record), calibrate=args.calibrate, spin=True)
 
     result = None

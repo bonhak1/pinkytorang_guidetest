@@ -18,12 +18,16 @@
   <arg name="precision_stops" default=""/>   <!-- 비우면 정밀 정차 안 함 -->
   <arg name="use_docking" default="false"/>
   <arg name="use_guide" default="false"/>
+  <arg name="use_camera" default="true"/>   <!-- camera_node: 카메라를 혼자 열고 /camera/image_raw 발행 (docking · guide가 구독) -->
   <arg name="guide_model" default="$(find-pkg-share fleet_agent)/models/best.pt"/>   <!-- YOLO 모델. "" = 손님 확인 없이 OK -->
   <arg name="fake_guide" default="false"/>      <!-- 시험: guide_node 대신 가짜 (GUIDE_TEST.md) -->
   <arg name="guide_lost_at" default=""/>        <!-- fake_guide: 이 노드(들) 확인에서 못 찾음. 예: N3 또는 N1,N3 -->
   <arg name="guide_greet_fail" default="false"/> <!-- fake_guide: 입구 인사에서 손님 안 옴 -->
   <arg name="guide_delay" default="1.0"/>        <!-- fake_guide: 결과까지 초 -->
 
+  <node pkg="fleet_agent" exec="camera_node" name="camera" output="screen" if="$(var use_camera)">
+    <param from="$(var params)"/>
+  </node>
   <node pkg="fleet_agent" exec="fleet_agent" name="fleet_agent" output="screen">
     <param from="$(var params)"/>
     <param name="robot_id" value="$(var robot_id)"/>

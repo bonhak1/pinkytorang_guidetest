@@ -27,6 +27,7 @@
   <arg name="use_guide" default="false"/>   <!-- 안내 손님 확인 노드 (카메라 토픽 필요) -->
   <arg name="guide_model" default="$(find-pkg-share fleet_agent)/models/best.pt"/>   <!-- YOLO. "" = 확인 없이 OK -->
   <arg name="spin_deg" default="0"/>
+  <arg name="use_camera" default="true"/>    <!-- camera_node (카메라 하나를 docking · guide가 같이 씀) -->
   <arg name="fake_guide" default="false"/>      <!-- 안내 시험: 카메라 없이 가짜 guide (use_guide:=false로) -->
   <arg name="guide_lost_at" default=""/>        <!-- fake_guide: 이 노드 확인에서 못 찾음 (예: N3) -->
   <arg name="guide_greet_fail" default="false"/>
@@ -61,6 +62,7 @@
       <arg name="start_node" value="$(var start_node)"/>
       <arg name="use_guide" value="$(var use_guide)"/>
       <arg name="guide_model" value="$(var guide_model)"/>
+      <arg name="use_camera" value="$(var use_camera)"/>
       <arg name="fake_guide" value="$(var fake_guide)"/>
       <arg name="guide_lost_at" value="$(var guide_lost_at)"/>
       <arg name="guide_greet_fail" value="$(var guide_greet_fail)"/>

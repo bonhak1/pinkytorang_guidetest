@@ -19,7 +19,7 @@ import time
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 
@@ -52,7 +52,7 @@ class GuideNode(Node):
         self.create_subscription(String, '/guide/request', self.on_request, rel)
         self.create_subscription(String, '/guide/cancel', self.on_cancel, rel)
         img_type = CompressedImage if self.compressed else Image
-        self.create_subscription(img_type, self.camera_topic, self.on_image, 1)
+        self.create_subscription(img_type, self.camera_topic, self.on_image, qos_profile_sensor_data)   # camera_node = best effort
         self.get_logger().info(f'guide 노드 시작 (카메라 {self.camera_topic}, '
                                f'{"YOLO " + self.class_name if self.model else "감지기 없음"})')
 

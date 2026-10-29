@@ -62,7 +62,11 @@
 | leave `undock` | D3 · D4를 떠날 때 | `undock.undock()` — 마커로 N16/N15까지, 왼쪽 90°, 방위각 정렬. 그 뒤 후진은 이 축 그대로 (`hold_axis`) |
 | leave `tape_exit` | P1을 떠날 때 | `line_dock.LineDocker.leave()` — 앞으로 가며 선을 세서 새 선에서 정지 → Nav2 |
 
-마커 준비 (로봇마다, fleet_agent는 끄고. 카메라를 docking 노드가 쥐고 있어서):
+카메라: `camera_node` 하나만 카메라를 열고 `/camera/image_raw`(bgr8, 180도 돌린 것)를 발행한다.
+docking · marker_dock · marker_align · guide · detect_view는 모두 구독만 한다 (fleet_agent.launch.xml `use_camera:=true` 기본).
+
+마커 준비 (로봇마다. camera_node가 떠 있어야 함 = `ros2 run fleet_agent camera_node` 또는 launch.
+camera_node 없이 직접 열려면 `--direct`, 이때는 camera_node · docking 노드를 꺼 둔다):
 ```bash
 ros2 run fleet_agent marker_dock --calibrate          # 처음 한 번: 카메라 거리 보정 -> ~/dock_cam.json
 ros2 run fleet_agent marker_dock --record --id 3      # 도킹 자리마다: 로봇을 최종 위치에 두고 -> ~/dock_target_id3.json

@@ -204,7 +204,8 @@ def run_ros(a, handle):
     def on_img(m):
         state['msg'], state['t'] = m, time.monotonic()
 
-    node.create_subscription(CompressedImage if a.compressed else Image, a.topic, on_img, 1)
+    from rclpy.qos import qos_profile_sensor_data
+    node.create_subscription(CompressedImage if a.compressed else Image, a.topic, on_img, qos_profile_sensor_data)
     print(f'카메라 {a.topic} 기다리는 중...')
     period = 1.0 / max(0.5, a.hz)
     warned = time.monotonic()

@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'fleet_agent = fleet_agent.agent_node:main',
             'docking_node = fleet_agent.docking_node:main',
+            'camera_node = fleet_agent.camera_node:main',       # 카메라 혼자 열고 /camera/image_raw 발행
             'obstacle_node = fleet_agent.obstacle_node:main',
             'initial_pose = fleet_agent.initial_pose:main',
             'node_tour = fleet_agent.node_tour:main',
