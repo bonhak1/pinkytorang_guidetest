@@ -256,13 +256,14 @@ class Driver:
     안내 (Move.guide = true): 서버는 "안내 중"과 도착지만 알려 주고, 나머지는 로봇이 판단한다
       - 인사 : 안내가 아닌 상태에서 안내 Move를 처음 받으면, 떠나기 전에 Guide 'greet' (앞 카메라로 손님 기다림)
       - 확인 : 꺾이는 노드(들어온 방향과 나갈 방향이 check_turn 넘게 다름)에서 멈춤 -> 뒤로 돎 -> Guide 'watch'
+               check_every=True면 꺾임 · check_gap과 상관없이 지나가는 노드마다 (도착지는 빼고)
                -> 다음 노드 쪽으로 돎 -> 이어 감. 바로 전 인사 · 확인 자리에서 check_gap m 안이면 건너뜀
       - 도착 : 도착지(goal_node)에서 CMD_DONE 뒤 Guide 'arrive' (도착 효과, 기다리지 않음). 안내는 정밀 정차 안 함
       - 손님을 못 찾으면 그 자리에 멈추고 CMD_FAILED reason="guest_lost:<노드>:<이유>" (고장 아님, 줄 비움)
     """
 
     def __init__(self, io, stops, pass_tol=0.08, yaw_tol=0.15, done_grace=0.5, reverse=None, policy=None,
-                 nav_retries=1, check_turn_deg=45.0, check_gap=0.8):
+                 nav_retries=1, check_turn_deg=45.0, check_gap=0.8, check_every=False):
         self.io = io
         self.stops = stops
         self.pass_tol = pass_tol      # 중간 노드 통과 판정 거리 (다음 노드로 바로 넘어감)
@@ -296,6 +297,7 @@ class Driver:
         self.in_guide = False         # 안내 중 (인사를 이미 함)
         self.check_turn = math.radians(check_turn_deg)
         self.check_gap = check_gap
+        self.check_every = check_every  # True = 꺾임과 상관없이 지나가는 노드마다 확인 (도착지는 빼고)
         self.check_xy = None          # 마지막으로 인사 · 확인한 자리
         self.prev_xy = None           # 바로 전에 도착한 노드 (꺾임 판단)
         self.came_xy = None           # 지금 선 노드 직전 노드 (손님이 따라오는 쪽. 다음 노드를 늦게 받을 때 꺾임 판단)
@@ -672,8 +674,10 @@ class Driver:
         """안내 중 꺾이는 노드인가 (came = 직전 노드에서 들어온 방향 vs 다음 노드로 나갈 방향)"""
         if not (self.in_guide and step.guide and nxt and nxt.guide) or REVERSE in (step.drive, nxt.drive):
             return False
-        if came is None:
-            return False
+        if came is None or math.hypot(step.x - came[0], step.y - came[1]) < 0.05:
+            return False          # 제자리 노드 (출발 노드 = 지금 선 자리): 들어온 방향이 없음
+        if self.check_every:
+            return True           # 노드마다 확인 (다음 노드가 있는 = 도착지가 아닌 노드)
         if self.check_xy and math.hypot(step.x - self.check_xy[0], step.y - self.check_xy[1]) < self.check_gap:
             return False          # 방금 인사 · 확인한 자리 근처
         h_in = math.atan2(step.y - came[1], step.x - came[0])

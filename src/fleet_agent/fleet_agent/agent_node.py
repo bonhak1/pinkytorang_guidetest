@@ -69,7 +69,8 @@ class FleetAgent(Node):
                              yaw_tol=p('yaw_tolerance', 0.15).value, done_grace=p('done_grace_sec', 0.5).value,
                              reverse=rev, policy=policy, nav_retries=p('nav_retries', 1).value,
                              check_turn_deg=p('guide_check_turn_deg', 45.0).value,
-                             check_gap=p('guide_check_gap_m', 0.8).value)
+                             check_gap=p('guide_check_gap_m', 0.8).value,
+                             check_every=p('guide_check_every_node', False).value)
         self.driver.last_node = self.start_node
         self.driver.leave_from = self.start_node   # 켤 때 선 노드에 leave(언도킹 등)가 있으면 첫 출발 때 먼저
 

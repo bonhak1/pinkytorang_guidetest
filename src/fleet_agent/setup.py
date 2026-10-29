@@ -37,7 +37,8 @@ setup(
             'guide_check = fleet_agent.guide_check:main',       # guide_node 단독 (greet / watch / arrive / 취소)
             'fake_guide = fleet_agent.fake_guide:main',         # 카메라 없이 손님 결과를 정하는 가짜 guide
             'detect_view = fleet_agent.detect_view:main',       # YOLO 인식 튜닝 (conf · 거리)
-            'guide_view = fleet_agent.guide_view:main',         # PC 창: 카메라 + 인식 박스 + 안내 상태
+            'guide_view = fleet_agent.guide_view:main',
+            'node_here = fleet_agent.node_here:main',           # 지금 위치를 node_graph 노드 좌표로 (D1 실측)         # PC 창: 카메라 + 인식 박스 + 안내 상태
             'guide_effect = fleet_agent.guide_effects:main',    # LCD · LED · 부저 효과만
             'marker_dock = fleet_agent.docking.marker_dock:main',   # 혼자 실행: --calibrate / --record / --dry-run
             'marker_align = fleet_agent.docking.marker_align:main', # 혼자 실행: 정렬 기준 --record (undock의 align)

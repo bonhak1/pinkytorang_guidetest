@@ -166,7 +166,41 @@ ros2 run fleet_agent guide_run T3
 
 ---
 
-## 4단계 · 서버와 함께
+## 4단계 · 서버와 함께 (키오스크에서 테이블 고르기)
+
+키오스크에서 테이블을 고르면: 로봇이 바로 환영(소리 · LED · 얼굴) → 손님 기다림 → D1에서 출발 →
+**지나가는 노드마다** 멈춰 뒤돌아 손님 확인 (`guide_check_every_node: true`) → 테이블 쪽 보고 도착 효과.
+어느 노드에서든 30초(`wait_sec`) 손님이 안 보이면 그 자리에 멈추고 서버에 `guest_lost` →
+서버가 안내 실패 · 테이블 FREE → 로봇은 D1으로 복귀 (시험 설정 `stay_at_start: true`라 켤 때 자리가 집).
+
+### 0) D1 실제 좌표 기록 (한 번)
+1. 로봇을 입구에 **앞이 통로(N1 쪽)를 보게** 놓고 켬: `grun D1 use_guide:=true`
+2. PC에서 RViz(`rviz2`, Fixed Frame `map`, Map · LaserScan 표시)로 **2D Pose Estimate**를 실제 자리 · 방향에 찍음.
+   레이저가 벽과 겹치면 OK
+3. PC (`ROS_DOMAIN_ID=53`): `ros2 run fleet_agent node_here D1 --write`  → node_graph.yaml D1이 실측값으로
+4. PC: `colcon build --packages-up-to fleet_agent pinkytorang_main` → commit · push → 로봇 `gbuild` 후 다시 켬
+
+### 1) 실행
+```bash
+# 로봇 (pinky3, 입구 D1에 놓고)
+gbuild && greal                      # 진짜 YOLO. 인식 없이 흐름만: gfake (손님 놓침 시험: gfake D1 T1)
+
+# PC 터미널 A: 서버 (ROS_DOMAIN_ID=50)
+cd ~/project/pinkytorang_guidetest && source install/setup.bash
+export ROS_DOMAIN_ID=50
+ros2 run pinkytorang_main main_service src/main_service/config/main_service_test.yaml
+
+# PC 터미널 B: 브릿지 (서버 50 <-> pinky3 53)
+cd ~/project/pinkytorang_guidetest && source install/setup.bash
+ros2 launch src/fleet_msgs/bridge/fleet_bridge.launch.xml pinky1:=false pinky2:=false
+
+# PC 브라우저: http://localhost:8080/kiosk  (테이블 고르기),  http://localhost:8080/store (진행 · 알림)
+# (선택) PC 터미널 C: ROS_DOMAIN_ID=53 ros2 run fleet_agent guide_view
+```
+- [ ] 매장 화면에 pinky3가 D1 · 대기로 보임 (안 보이면 브릿지 · robot_id=hostname 확인)
+- [ ] 테이블 고르자마자 환영 효과, 손님이 보이면 출발
+- [ ] 노드마다 서서 뒤돌아 확인 → 이어 감, 도착하면 테이블 쪽 보고 효과, 매장 화면 착석 카운트다운
+- [ ] 인형을 숨기면 30초 뒤 멈춤, 매장 화면에 "손님이 따라오지 않아 안내를 멈췄어요", 테이블 FREE, 로봇 D1 복귀
 
 시뮬레이터: `main_service_sim <cfg> <배속>`, `SIM_GUEST_LOST=<노드>` 로 안내 실패 흉내.
 실제: 서버 + 브릿지 + 로봇, 키오스크(`/kiosk`)에서 테이블 선택 → 매장 UI에서 안내 단계 · 테이블 RESERVED → OCCUPIED · 실패 시 FREE 확인.

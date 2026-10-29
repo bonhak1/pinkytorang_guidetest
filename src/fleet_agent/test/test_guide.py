@@ -237,3 +237,33 @@ def test_known_check_even_when_server_sends_one_node_at_a_time():
     two = run_scenario(G, 'T5', spots=SPOTS, lookahead=2)
     one = run_scenario(G, 'T5', spots=SPOTS, lookahead=1)
     assert one.ok and one.checks == two.checks
+
+
+# ================================================================ 6. 노드마다 확인 (guide_check_every_node)
+@pytest.mark.parametrize('table', TABLES)
+def test_every_node_checks_each_passing_node(table):
+    r = run_scenario(G, table, spots=SPOTS, check_every=True)
+    assert r.ok and r.back_ok
+    assert r.greet == ['D1'] and r.arrive == [r.plan.goal]
+    assert r.checks == r.plan.nodes[1:-1], '출발 · 도착지 빼고 지나가는 노드마다'
+    assert max(r.look_err_deg) < 30, '매번 손님(왔던 쪽)을 봄'
+
+
+def test_every_node_lost_returns_home_from_there():
+    r = run_scenario(G, 'T3', spots=SPOTS, check_every=True, guest=Guest({'T1'}, wait_sec=30.0))
+    assert r.failed == 'guest_lost:T1:not_seen' and r.end_node == 'T1'
+    fail_t = [t for t, et, n, _ in r.robot.events if et == CMD_FAILED][0]
+    watch_t = [t for t, a, n, *_ in r.robot.guides if a == 'watch' and n == 'T1'][0]
+    assert 29.9 <= fail_t - watch_t <= 30.2, '30초 못 찾으면 실패'
+    assert r.back_ok, '그 자리에서 D1으로 복귀'
+
+
+def test_node_here_updates_only_that_node():
+    import yaml
+    from fleet_agent.node_here import update_node_line
+    text = open(G.file, encoding='utf-8').read()
+    new, old, line = update_node_line(text, 'D1', 1.8, 0.21, 1.5708, '실측')
+    assert sum(a != b for a, b in zip(text.splitlines(), new.splitlines())) == 1
+    d1 = [n for n in yaml.safe_load(new)['nodes'] if n['id'] == 'D1'][0]
+    assert (d1['x'], d1['y'], d1['yaw']) == (1.8, 0.21, 1.571) and d1['next'] == ['N1', 'D2']
+    assert '[추정]' not in line and '실측' in line

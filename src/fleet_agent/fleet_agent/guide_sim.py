@@ -167,7 +167,7 @@ class Result:
 
 def run_scenario(g, table, start='D1', spots=None, guest=None, lookahead=2, latency=0.1, back=True,
                  seat_sec=2.0, pause_at=None, obstacle=None, stops=None, check_turn=45.0, check_gap=0.8,
-                 limit_sec=300.0, dt=0.05):
+                 limit_sec=600.0, dt=0.05, check_every=False):
     """안내 한 번 (+ 복귀) -> Result.  pause_at = (노드, 초), obstacle = (노드, 초, 'DYNAMIC'|'STATIC')"""
     spots = load_guide_spots() if spots is None else spots
     guest = guest or Guest()
@@ -176,7 +176,7 @@ def run_scenario(g, table, start='D1', spots=None, guest=None, lookahead=2, late
     syaw = float(g.nodes[start].get('yaw', g.heading(start, plan.nodes[1]) if len(plan.nodes) > 1 else 0.0))
     robot = SimRobot(sx, sy, syaw, guest)
     drv = Driver(robot, stops or {}, reverse=ReverseControl(speed=0.08), policy=BlockPolicy(),
-                 check_turn_deg=check_turn, check_gap=check_gap)
+                 check_turn_deg=check_turn, check_gap=check_gap, check_every=check_every)
     drv.last_node = start
     drv.leave_from = start
     robot.driver = drv
@@ -327,6 +327,7 @@ def main(argv=None):
     ap.add_argument('--obstacle', default='', help='노드:초[:STATIC]  이 노드를 지나 초 동안 막힘')
     ap.add_argument('--check-turn', type=float, default=45.0, help='guide_check_turn_deg')
     ap.add_argument('--check-gap', type=float, default=0.8, help='guide_check_gap_m')
+    ap.add_argument('--every-node', action='store_true', help='guide_check_every_node: 지나가는 노드마다 확인')
     ap.add_argument('--stops', default='', help='precision_stops.yaml (복귀 도킹 정밀 정차도 흉내)')
     ap.add_argument('--graph', default='', help='node_graph.yaml')
     ap.add_argument('--server-config', default='', help='main_service.yaml (guide_spots)')
@@ -351,7 +352,8 @@ def main(argv=None):
     rows = []
     for t in tables:
         r = run_scenario(g, t, a.start, spots, guest, a.lookahead, a.latency, not a.no_return,
-                         pause_at=pause, obstacle=obst, stops=stops, check_turn=a.check_turn, check_gap=a.check_gap)
+                         pause_at=pause, obstacle=obst, stops=stops, check_turn=a.check_turn, check_gap=a.check_gap,
+                         check_every=a.every_node)
         rows.append(r)
         if a.verbose:
             print(f'==== {t} ====')

@@ -40,6 +40,7 @@ class GuideNode(Node):
         self.confirm = int(p('confirm', 2).value)
         self.effects = p('effects', True).value
         self.require_detector = p('require_detector', False).value
+        self.welcome_first = p('welcome_on_request', True).value   # greet가 오면(테이블 선택) 바로 환영
 
         self.frame = None
         self.frame_t = 0.0
@@ -99,11 +100,13 @@ class GuideNode(Node):
             return
         if action not in ('greet', 'watch'):
             return
+        if action == 'greet' and self.welcome_first:
+            self.effect('welcome')               # 테이블을 고르자마자 환영 (손님 찾기는 그다음)
         if self.model is None:
             if self.require_detector:
                 self.reply(rid, False, 'no_detector')
             else:
-                if action == 'greet':
+                if action == 'greet' and not self.welcome_first:
                     self.effect('welcome')
                 self.reply(rid, True, 'no_detector')
             return
@@ -142,7 +145,7 @@ class GuideNode(Node):
                 seen = False
             hits = hits + 1 if seen else 0
             if hits >= self.confirm:
-                if action == 'greet':
+                if action == 'greet' and not self.welcome_first:
                     self.effect('welcome')
                 self.reply(rid, True, 'guest_seen')
                 return

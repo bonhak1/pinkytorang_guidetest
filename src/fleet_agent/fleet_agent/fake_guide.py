@@ -99,8 +99,6 @@ def main():
         if cancel.wait(wait):
             log.info(f'id {rid} 취소됨 -> 결과 안 보냄 (진짜 guide_node와 같음)')
             return
-        if ok and action == 'greet':
-            effect('welcome')
         reply(rid, ok, detail)
 
     def on_request(msg):
@@ -118,6 +116,8 @@ def main():
                 return
             if action not in ('greet', 'watch'):
                 return
+            if action == 'greet':
+                effect('welcome')                  # 진짜 guide_node(welcome_on_request)처럼 요청 오자마자 환영
             cancel = threading.Event()
             state['job'] = (rid, cancel)
         threading.Thread(target=worker, args=(rid, action, nid, cancel), daemon=True).start()

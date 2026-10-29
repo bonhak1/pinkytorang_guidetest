@@ -15,6 +15,7 @@ fleet_agent:
     nav_retries: 1               # Nav2 실패 때 다시 보내는 횟수 (그래도 안 되면 CMD_FAILED)
     guide_check_turn_deg: 45.0   # 안내 중 이보다 크게 꺾이는 노드에서 멈춰 뒤돌아 손님 확인
     guide_check_gap_m: 0.8       # 바로 전 인사 · 확인 자리에서 이 안이면 확인 안 함 (맵이 작아서 너무 자주 서지 않게)
+    guide_check_every_node: true # true = 꺾임과 상관없이 지나가는 노드마다 뒤돌아 손님 확인 (도착지는 빼고)
     dynamic_wait_sec: 3.0        # 사람: 이만큼 기다림
     dynamic_ask_sec: 5.0         # 사람: 그다음 LCD '지나갈게요' -> 이만큼 뒤 서버에 BLOCKED
     static_wait_sec: 2.0         # 물건: 이만큼 확인하고 BLOCKED
@@ -54,6 +55,8 @@ guide:
     conf: 0.5
     infer_hz: 4.0                     # 확인 중에만 이만큼 YOLO (라즈베리파이 CPU)
     confirm: 2                        # 연속으로 이만큼 보이면 찾음
-    wait_sec: 30.0                    # 이 안에 못 찾으면 손님 놓침 -> 서버에 guest_lost
+    wait_sec: 30.0                    # 이 안에 못 찾으면 손님 놓침 -> 서버에 guest_lost -> 안내 실패 · 로봇 집(D1)으로
+    welcome_on_request: true          # true = 테이블을 고르면(greet 요청) 바로 환영 효과, 그다음 손님 기다림
+                                      # false = 손님을 찾았을 때 환영
     effects: true                     # LCD 얼굴 · LED · 부저
     require_detector: false           # true = 모델 없으면 실패, false = 모델 없으면 바로 OK (시험용)
