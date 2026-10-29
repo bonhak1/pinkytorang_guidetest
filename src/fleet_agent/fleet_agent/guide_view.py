@@ -8,7 +8,11 @@
   ros2 run fleet_agent guide_view --raw                # 원본 영상 (유선 · 로봇에서 직접 볼 때)
   ros2 run fleet_agent guide_view --conf 0.4 --hz 8    # 처음 conf · 추론 주기
 
-  창에서:  [ / ] conf 내리기 · 올리기   s 사진 저장(~/guide_view/)   p 멈춤/계속   q · Esc 끝
+  ros2 run fleet_agent guide_view --record           # 켜자마자 녹화
+  python3 -m fleet_agent.guide_view --extract ~/guide_view/raw_172301.mp4 --every 5   # 원본 영상 -> 학습용 사진
+
+  창에서:  [ / ] conf 내리기 · 올리기   s 사진 저장   r 녹화 시작/끝   p 멈춤/계속   q · Esc 끝
+  녹화 = ~/guide_view/ 에 두 개:  view_<시각>.mp4 (박스 · 판 그린 화면)  raw_<시각>.mp4 (카메라 원본, 학습 데이터용)
   오른쪽 판:  찾음 판정 · 연속 횟수 · 가장 큰 손님 박스(거리 짐작) · 로봇 안내 요청/결과(guide_node)
 """
 import argparse
@@ -51,6 +55,7 @@ class ViewState:
         self.paused = False
         self.note = ''               # 잠깐 띄울 글 (저장함 등)
         self.note_t = 0.0
+        self.rec_since = None        # 녹화 시작 시각 (None = 안 함)
 
     def rx_fps(self, now):
         self.rx_times = [t for t in self.rx_times if now - t < 2.0]
@@ -174,11 +179,96 @@ class Painter:
             msg = self.t('영상 없음: 로봇 camera_node 확인', 'no video: check camera_node')
         if msg:
             d.text((14, h - 54), msg, fill=(255, 200, 80), font=f)
-        d.text((14, h - 26), 's ' + self.t('저장', 'save') + '   p ' + self.t('멈춤', 'pause') + '   q ' +
-               self.t('끝', 'quit'), fill=(130, 130, 135), font=fs)
+        d.text((14, h - 26), 's ' + self.t('사진', 'shot') + '  r ' + self.t('녹화', 'rec') + '  p ' +
+               self.t('멈춤', 'pause') + '  q ' + self.t('끝', 'quit'), fill=(130, 130, 135), font=fs)
+
+        if st.rec_since is not None:                      # 녹화 중 표시 (영상 왼쪽 위)
+            el = int(now - st.rec_since)
+            cv2.circle(img, (22, 22), 9, (0, 0, 255), -1)
+            cv2.putText(img, f'REC {el // 60:02d}:{el % 60:02d}', (38, 29), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
+                        (0, 0, 255), 2, cv2.LINE_AA)
 
         panel_bgr = np.asarray(panel)[:, :, ::-1]
         return np.hstack([img, panel_bgr])
+
+
+# ------------------------------------------------------------------ 녹화
+class Recorder:
+    """두 영상을 같이 씀: view (화면 그대로) + raw (카메라 원본). 새 카메라 프레임이 올 때만 한 장씩"""
+
+    def __init__(self, out_dir, fps=15.0):
+        self.out_dir = out_dir
+        self.fps = fps
+        self.view = self.raw = None
+        self.paths = ()
+        self.count = 0
+        self.last_t = None
+        self.sizes = None
+
+    @property
+    def on(self):
+        return self.view is not None
+
+    def start(self, canvas, raw):
+        import cv2
+        os.makedirs(self.out_dir, exist_ok=True)
+        stamp = time.strftime('%m%d_%H%M%S')
+        pv = os.path.join(self.out_dir, f'view_{stamp}.mp4')
+        pr = os.path.join(self.out_dir, f'raw_{stamp}.mp4')
+        four = cv2.VideoWriter_fourcc(*'mp4v')
+        self.sizes = ((canvas.shape[1], canvas.shape[0]), (raw.shape[1], raw.shape[0]))
+        self.view = cv2.VideoWriter(pv, four, self.fps, self.sizes[0])
+        self.raw = cv2.VideoWriter(pr, four, self.fps, self.sizes[1])
+        if not (self.view.isOpened() and self.raw.isOpened()):
+            self.view = self.raw = None
+            raise RuntimeError('영상 파일을 못 엶 (OpenCV mp4v 코덱)')
+        self.paths = (pv, pr)
+        self.count = 0
+        self.last_t = None
+        return self.paths
+
+    def write(self, canvas, raw, frame_t):
+        """카메라 프레임이 바뀌었을 때만 씀 (같은 프레임을 화면 갱신마다 반복해 쓰지 않게)"""
+        import cv2
+        if not self.on or frame_t is None or frame_t == self.last_t:
+            return False
+        self.last_t = frame_t
+        if (canvas.shape[1], canvas.shape[0]) != self.sizes[0]:
+            canvas = cv2.resize(canvas, self.sizes[0])
+        if (raw.shape[1], raw.shape[0]) != self.sizes[1]:
+            raw = cv2.resize(raw, self.sizes[1])
+        self.view.write(canvas)
+        self.raw.write(raw)
+        self.count += 1
+        return True
+
+    def stop(self):
+        if self.on:
+            self.view.release()
+            self.raw.release()
+        self.view = self.raw = None
+        return self.paths, self.count
+
+
+def extract_frames(video, out_dir, every=5):
+    """원본 영상(raw_*.mp4) -> every 장마다 한 장씩 jpg (YOLO 학습 데이터 images/ 폴더용) -> 저장한 수"""
+    import cv2
+    os.makedirs(out_dir, exist_ok=True)
+    cap = cv2.VideoCapture(video)
+    if not cap.isOpened():
+        raise SystemExit(f'영상을 못 엶: {video}')
+    base = os.path.splitext(os.path.basename(video))[0]
+    i = saved = 0
+    while True:
+        ok, img = cap.read()
+        if not ok:
+            break
+        if i % max(1, every) == 0:
+            cv2.imwrite(os.path.join(out_dir, f'{base}_{i:05d}.jpg'), img)
+            saved += 1
+        i += 1
+    cap.release()
+    return saved
 
 
 # ------------------------------------------------------------------ YOLO
@@ -234,7 +324,18 @@ def main():
     ap.add_argument('--confirm', type=int, default=2)
     ap.add_argument('--hz', type=float, default=6.0, help='YOLO 주기 (PC라 로봇 4Hz보다 빨라도 됨)')
     ap.add_argument('--save-dir', default=os.path.expanduser('~/guide_view'))
+    ap.add_argument('--record', action='store_true', help='켜자마자 녹화 (r로 끝)')
+    ap.add_argument('--rec-fps', type=float, default=15.0, help='녹화 영상 fps (camera_node fps와 같게)')
+    ap.add_argument('--extract', default='', help='원본 녹화 영상 -> 사진 (ROS 없이, 이것만 하고 끝)')
+    ap.add_argument('--every', type=int, default=5, help='--extract: 몇 장마다 한 장')
+    ap.add_argument('--out', default='', help='--extract: 사진 폴더 (기본: <save-dir>/frames)')
     a = ap.parse_args(argv)
+
+    if a.extract:
+        out = a.out or os.path.join(a.save_dir, 'frames')
+        n = extract_frames(os.path.expanduser(a.extract), out, a.every)
+        print(f'{n}장 저장 -> {out}  (손님 없는 장면은 빈 라벨로 넣으면 오인식이 줄어듦)')
+        return
 
     model = a.model or default_model()
     if not model or not os.path.exists(model):
@@ -327,11 +428,31 @@ def main():
 
     win = 'guide_view'
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    rec = Recorder(a.save_dir, a.rec_fps)
+    want_rec = a.record
+
+    def toggle_rec(canvas, raw):
+        if rec.on:
+            (pv, pr), n = rec.stop()
+            st.rec_since = None
+            st.note, st.note_t = painter.t(f'녹화 끝 {n}장', f'rec saved {n} frames'), time.monotonic()
+            print(f'녹화 끝 ({n}장, 약 {n / a.rec_fps:.0f}초)\n  화면: {pv}\n  원본: {pr}')
+        else:
+            pv, pr = rec.start(canvas, raw)
+            st.rec_since = time.monotonic()
+            print(f'녹화 시작\n  화면: {pv}\n  원본: {pr}')
+
     print(f'영상 {a.topic}{"" if a.raw else "/compressed"} 기다리는 중 (ROS_DOMAIN_ID={os.environ.get("ROS_DOMAIN_ID", "0")})')
     try:
         while True:
             with st.lock:
                 canvas = painter.render(st)
+                raw, raw_t = st.frame, st.frame_t
+            if want_rec and raw is not None:
+                want_rec = False
+                toggle_rec(canvas, raw)
+            if rec.on and raw is not None:
+                rec.write(canvas, raw, raw_t)
             cv2.imshow(win, canvas)
             k = cv2.waitKey(30) & 0xFF
             if k in (ord('q'), 27):
@@ -344,6 +465,15 @@ def main():
                 st.conf = min(0.95, round(st.conf + 0.05, 2))
             elif k == ord('p'):
                 st.paused = not st.paused
+            elif k == ord('r'):
+                if raw is None:
+                    st.note, st.note_t = painter.t('영상이 없어 녹화 못 함', 'no video'), time.monotonic()
+                else:
+                    try:
+                        toggle_rec(canvas, raw)
+                    except RuntimeError as e:
+                        st.note, st.note_t = str(e), time.monotonic()
+                        print(e)
             elif k == ord('s'):
                 os.makedirs(a.save_dir, exist_ok=True)
                 p = os.path.join(a.save_dir, time.strftime('view_%H%M%S.jpg'))
@@ -352,6 +482,9 @@ def main():
                 print('저장', p)
     except KeyboardInterrupt:
         pass
+    if rec.on:                                   # 녹화 중에 끄면 파일을 닫고 끝 (안 닫으면 영상이 깨짐)
+        (pv, pr), n = rec.stop()
+        print(f'녹화 저장 ({n}장)\n  화면: {pv}\n  원본: {pr}')
     cv2.destroyAllWindows()
     node.destroy_node()
     rclpy.try_shutdown()

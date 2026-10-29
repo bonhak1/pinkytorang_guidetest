@@ -161,3 +161,27 @@ def test_marker_measured_from_topic():
     cam.id = 5                                    # 다른 마커 ID면 못 찾음
     n.cb(Msg(bgr))
     assert cam.measure() is None
+
+
+def test_guide_view_records_both_videos_and_extracts(tmp_path):
+    from fleet_agent.guide_view import Painter, Recorder, ViewState, extract_frames
+    st = ViewState(0.5, 2, 'toy_person')
+    p = Painter()
+    rec = Recorder(str(tmp_path), fps=15)
+    t = time.monotonic()
+    for i in range(30):
+        st.frame, st.frame_t = frame(i * 5), t + i      # 새 프레임 30장
+        canvas = p.render(st, t + i)
+        if i == 0:
+            rec.start(canvas, st.frame)
+            st.rec_since = t
+        rec.write(canvas, st.frame, st.frame_t)
+        rec.write(canvas, st.frame, st.frame_t)            # 같은 프레임 두 번 -> 한 번만
+    (pv, pr), n = rec.stop()
+    assert n == 30 and os.path.getsize(pv) > 0 and os.path.getsize(pr) > 0
+    for path, w in ((pv, 64 + 300), (pr, 64)):
+        cap = cv2.VideoCapture(path)
+        assert int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) == 30 and int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) == w
+        cap.release()
+    saved = extract_frames(pr, str(tmp_path / 'frames'), every=5)
+    assert saved == 6 and len(os.listdir(tmp_path / 'frames')) == 6
