@@ -226,17 +226,13 @@ def test_guide_run_runner_hold_and_cancel():
     assert rn2.runs[0].arrive == ''
 
 
-# ================================================================ 5. 알려진 문제 (고치면 xfail 표시를 지운다)
-@pytest.mark.xfail(strict=True, reason='core._begin_check가 "지금 yaw + 180도"로 돎. 꺾이는 노드에서는 yaw가 '
-                                       '다음 노드 쪽이라 손님(왔던 쪽) 대신 옆(약 90도)을 봄 -> guide-fixes.patch')
+# ================================================================ 5. 고친 문제 (guide-fixes.patch): 다시 생기지 않게
 @pytest.mark.parametrize('table', ['T1', 'T3', 'T5'])
 def test_known_watch_faces_the_guest(table):
     r = run_scenario(G, table, spots=SPOTS)
     assert r.look_err_deg and max(r.look_err_deg) < 30, f'손님 쪽과 {r.look_err_deg}도 차이'
 
 
-@pytest.mark.xfail(strict=True, reason='core._reached가 다음 노드를 아직 모르면(서버가 1칸씩 보냄 = lock 경쟁) '
-                                       '꺾임 판단을 못 해 확인을 통째로 건너뜀 -> guide-fixes.patch')
 def test_known_check_even_when_server_sends_one_node_at_a_time():
     two = run_scenario(G, 'T5', spots=SPOTS, lookahead=2)
     one = run_scenario(G, 'T5', spots=SPOTS, lookahead=1)

@@ -298,6 +298,7 @@ class Driver:
         self.check_gap = check_gap
         self.check_xy = None          # 마지막으로 인사 · 확인한 자리
         self.prev_xy = None           # 바로 전에 도착한 노드 (꺾임 판단)
+        self.came_xy = None           # 지금 선 노드 직전 노드 (손님이 따라오는 쪽. 다음 노드를 늦게 받을 때 꺾임 판단)
         self.leave_from = ''          # 여기서 출발할 때 leave 정밀 동작을 먼저 (precision_stops의 leave)
         self.leave_req = None
         self.prec_ok = True
@@ -407,7 +408,7 @@ class Driver:
                 return
 
         if self.phase == 'idle':
-            if len(self.queue):
+            if len(self.queue) and not self._late_check(pose):
                 self._start_next(pose)
         elif self.phase in ('turn', 'final_turn', 'guide_turn'):
             w, done = turn_command(pose[2], self.turn_target, tol=self.yaw_tol)
@@ -471,7 +472,8 @@ class Driver:
                 self._reached(pose)
         elif self.phase == 'grace':
             if len(self.queue):
-                self._start_next(pose)
+                if not self._late_check(pose):
+                    self._start_next(pose)
             elif now >= self.grace_until:
                 self._finish(pose)
 
@@ -479,7 +481,7 @@ class Driver:
     def _tick_nav(self, pose):
         d = math.hypot(self.cur.x - pose[0], self.cur.y - pose[1])
         nxt = self.queue.steps[0] if len(self.queue) else None
-        if nxt and nxt.drive == FORWARD and d < self.pass_tol and not self._is_check(self.cur, nxt):
+        if nxt and nxt.drive == FORWARD and d < self.pass_tol and not self._is_check(self.cur, nxt, self.prev_xy):
             self._reached(pose)  # 중간 노드: 위치만 통과, 다음 목표로 바로 (손님 확인 노드는 끝까지 가서 선다)
             return
         if self.nav_state == 'ok':
@@ -584,10 +586,12 @@ class Driver:
         self.nav_state = ''
         self.io.event(NODE_REACHED, step.cmd_id, step.node_id, '')
         nxt = self.queue.steps[0] if len(self.queue) else None
-        check = self._is_check(step, nxt)
+        came = self.prev_xy
+        check = self._is_check(step, nxt, came)
         self.prev_xy = (step.x, step.y)
+        self.came_xy = came
         if check:
-            self._begin_check(pose)
+            self._begin_check(pose, came)
             return
         stop = self.stops.get(step.node_id)
         if stop and stop['method'] == 'align':
@@ -664,15 +668,15 @@ class Driver:
             return None
 
     # ------------------------------------------------------------ 안내
-    def _is_check(self, step, nxt):
-        """안내 중 꺾이는 노드인가 (들어온 방향 vs 다음 노드로 나갈 방향)"""
+    def _is_check(self, step, nxt, came):
+        """안내 중 꺾이는 노드인가 (came = 직전 노드에서 들어온 방향 vs 다음 노드로 나갈 방향)"""
         if not (self.in_guide and step.guide and nxt and nxt.guide) or REVERSE in (step.drive, nxt.drive):
             return False
-        if self.prev_xy is None:
+        if came is None:
             return False
         if self.check_xy and math.hypot(step.x - self.check_xy[0], step.y - self.check_xy[1]) < self.check_gap:
             return False          # 방금 인사 · 확인한 자리 근처
-        h_in = math.atan2(step.y - self.prev_xy[1], step.x - self.prev_xy[0])
+        h_in = math.atan2(step.y - came[1], step.x - came[0])
         h_out = math.atan2(nxt.y - step.y, nxt.x - step.x)
         return abs(wrap(h_out - h_in)) > self.check_turn
 
@@ -685,15 +689,30 @@ class Driver:
         self.guide_after = after
         self.io.guide({'action': action, 'node': node})
 
-    def _begin_check(self, pose):
-        """손님 확인 노드: 멈춤 -> 뒤로 돎 -> watch -> 다음 노드 쪽으로 돎 -> 이어 감"""
+    def _late_check(self, pose):
+        """다음 노드를 늦게 받음 (서버가 lock을 못 잡아 1칸씩 보냄): 도착 때는 꺾임을 몰랐으니 지금 판단.
+        지금 선 노드가 꺾이는 곳이면 여기서 확인하고 이어 감 -> True"""
+        step = self.cur
+        if step is None or step.node_id != self.last_node or not len(self.queue):
+            return False
+        if not self._is_check(step, self.queue.steps[0], self.came_xy):
+            return False
+        self._begin_check(pose, self.came_xy)
+        return True
+
+    def _begin_check(self, pose, came=None):
+        """손님 확인 노드: 멈춤 -> 왔던 쪽(손님)으로 돎 -> watch -> 다음 노드 쪽으로 돎 -> 이어 감
+        (도착 yaw는 서버가 준 다음 노드 쪽이라 "+180도"면 꺾이는 노드에서 옆을 봄. 직전 노드 쪽을 본다)"""
         self.io.cmd_vel(0.0, 0.0)
         self.io.nav_cancel()
         self.io.direction('STOP')
         node = self.cur.node_id
         self.check_xy = (self.cur.x, self.cur.y)
         self.phase = 'guide_turn'
-        self.turn_target = wrap(pose[2] + math.pi)
+        if came is not None and math.hypot(came[0] - pose[0], came[1] - pose[1]) > 0.05:
+            self.turn_target = math.atan2(came[1] - pose[1], came[0] - pose[0])
+        else:
+            self.turn_target = wrap(pose[2] + math.pi)
         self.io.log(f'{node}: 손님 확인 (뒤로 돎)')
 
         def after_back(p):
