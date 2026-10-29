@@ -142,19 +142,46 @@ def _stop_rainbow():
         t.join(timeout=1.0)
 
 
-def _hold_then_off(led, hold, stop, log):
-    """소리 뒤: 마지막 색 그대로 hold 초 -> 끔. stop이 켜지면 그만 (다음 효과가 LED를 씀)"""
+def _led_off(led, log):
+    """LED 끄기: 검정 두 번 (한 번 놓쳐도 꺼지게) + 라이브러리에 clear가 있으면 그것도"""
+    for _ in range(2):
+        led.fill((0, 0, 0))
+        led.show()
+        time.sleep(0.05)
+    for name in ('clear', 'off'):
+        f = getattr(led, name, None)
+        if callable(f):
+            try:
+                f()
+            except Exception as e:  # noqa: BLE001
+                log(f'LED {name}() 실패: {e}')
+            break
+
+
+def _hold_then_off(led, buzzer, hold, stop, log):
+    """소리 뒤: 마지막 색 그대로 hold 초 -> LED 끔 -> 그다음에야 부저 정리(clean)
+    (clean이 GPIO를 정리하면 그 뒤 LED · LCD 명령이 안 먹으므로 반드시 맨 마지막)"""
     try:
         if not stop.wait(hold):
-            led.fill((0, 0, 0))
-            led.show()
+            _led_off(led, log)
+            log('LED 꺼짐')
     except Exception as e:  # noqa: BLE001
         log(f'LED 끄기 실패: {e}')
+    finally:
+        if not stop.is_set():          # 새 효과가 이미 시작했으면 GPIO를 건드리지 않음
+            try:
+                buzzer.clean()
+            except Exception as e:  # noqa: BLE001
+                log(f'부저 정리 실패: {e}')
 
 
 def _lcd_black(lcd):
+    """LCD 검은 화면 (잔상 없게 두 번)"""
     from PIL import Image
-    lcd.img_show(Image.new('RGB', (W, H), (0, 0, 0)))
+    black = Image.new('RGB', (W, H), (0, 0, 0))
+    for _ in range(2):
+        lcd.img_show(black)
+        time.sleep(0.05)
 
 
 def rainbow_at(elapsed, total, loops=RAINBOW_LOOPS):
@@ -214,14 +241,14 @@ def play(kind, log=print, hold=None):
             b.set_buzzer_duty(0)
             t_note += NOTE_GAP                                # 음 사이 살짝 끊어서 또렷하게
             led_until(t_note)
-        b.buzzer_stop()
-        b.clean()
+        b.set_buzzer_duty(0)
+        b.buzzer_stop()                                       # 소리만 멈춤. clean(GPIO 정리)은 LED 끈 뒤 맨 마지막
+        if LCD_BLACK:
+            _lcd_black(lcd)                                   # 소리 끝 = 얼굴 지우고 검은 화면 (정리 전에)
         led.fill(RAINBOW[-1])                                 # 2바퀴 끝 = 보라 (마지막 색 그대로 둠)
         led.show()
-        if LCD_BLACK:
-            _lcd_black(lcd)                                   # 소리 끝 = 얼굴 지우고 검은 화면
         stop = threading.Event()
-        t = threading.Thread(target=_hold_then_off, args=(led, hold, stop, log), daemon=True)
+        t = threading.Thread(target=_hold_then_off, args=(led, b, hold, stop, log), daemon=True)
         with _led_lock:
             globals()['_led_stop'] = stop
             _led_thread = t
@@ -299,7 +326,6 @@ def main():
             if led_t and kind == kinds_all[-1]:
                 try:
                     led_t.join()                                 # 마지막 효과는 LED가 꺼질 때까지 기다림
-                    print('  LED 꺼짐')
                 except KeyboardInterrupt:
                     _stop_rainbow()
                     print('  (Ctrl+C) LED 그대로 멈춤')
