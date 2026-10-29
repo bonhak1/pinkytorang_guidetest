@@ -60,8 +60,8 @@ python3 -m fleet_agent.guide_sim T3 -v     # 시간순 로그
 ros2 run fleet_agent guide_effect welcome      # 또는 arrived / both
 ```
 - [ ] LCD에 웃는 얼굴 + `WELCOME!` / `ARRIVED!`, 들썩 → 윙크 → 활짝
-- [ ] 멜로디가 끝나면 LCD 얼굴이 지워지고 꺼짐
-- [ ] LED가 음마다 빨주노초파남보로 바뀌고, 멜로디 뒤에도 무지개로 돌다가 15초 뒤 꺼짐 (`LED_HOLD_SEC`)
+- [ ] 소리 동안 LED가 빨주노초파남보를 2바퀴 돎 (`RAINBOW_LOOPS`)
+- [ ] 소리가 끝나면 LCD가 검은 화면으로, LED는 2초 뒤 꺼짐 (`LED_HOLD_SEC`)
 - [ ] PC 미리보기: `ros2 run fleet_agent guide_effect --preview /tmp/fx` (얼굴 PNG + 멜로디 WAV)
 - [ ] "효과 건너뜀 (라이브러리 없음)"이 나오면 `pinkylib`, `pinky_lcd` 설치 확인
 

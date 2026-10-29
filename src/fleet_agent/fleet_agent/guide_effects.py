@@ -4,9 +4,9 @@ play('welcome') : 입구에서 손님을 찾았을 때. 딩동 -> 올라가는 �
 play('arrived') : 테이블에 도착했을 때. 짧은 팡파레, 활짝 웃는 얼굴 + 반짝이
 핑키 라이브러리가 없으면(시험 PC 등) 그냥 건너뛴다. 부저가 sleep으로 2초쯤 걸리므로 guide_node가 별도 스레드에서 부른다.
 
-  LED : 멜로디 동안 음마다 빨주노초파남보로 바뀌고, 끝난 뒤에도 무지개로 돌다가 LED_HOLD_SEC(15초) 뒤 꺼짐
-        (play는 멜로디가 끝나면 바로 돌아오고, LED는 뒤에서 혼자 돌다 꺼진다. 새 효과가 오면 이전 LED는 그만)
-  LCD : 멜로디 동안 웃는 얼굴 애니메이션, 멜로디가 끝나면 화면을 지우고 끔
+  LED : 멜로디 길이에 맞춰 빨주노초파남보를 RAINBOW_LOOPS(2)번 돌고, 소리가 끝나면 마지막 색 그대로
+        LED_HOLD_SEC(2초) 뒤 꺼짐 (play는 소리가 끝나면 바로 돌아오고 LED 끄기는 뒤에서. 새 효과가 오면 이전 것은 그만)
+  LCD : 멜로디 동안 웃는 얼굴 애니메이션, 끝나면 검은 화면 (백라이트는 그대로 -> 서버 LCD 문구가 다시 보임)
 
 혼자 시험 (ROS 필요 없음)
   ros2 run fleet_agent guide_effect welcome|arrived|both        # 로봇에서 진짜로
@@ -28,11 +28,12 @@ MELODY = {
     'arrived': [(1047, .09), (1319, .09), (1568, .09), (2093, .20),
                 (None, .07), (1568, .10), (2093, .38)],
 }
-# LED 무지개 (빨주노초파남보). 음마다 다음 색, 멜로디 뒤에는 LED_STEP_SEC마다 다음 색
+# LED 무지개 (빨주노초파남보). 멜로디 전체 길이를 나눠 RAINBOW_LOOPS번 돈다 (음 박자와 상관없이 고르게)
 RAINBOW = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211)]
-LED_HOLD_SEC = 15.0      # 멜로디가 끝나고 LED를 이만큼 더 켜 둠
-LED_STEP_SEC = 0.3       # 멜로디 뒤 색 바뀌는 간격
-LCD_OFF = True           # 멜로디가 끝나면 LCD 얼굴을 지우고 백라이트 끔
+RAINBOW_LOOPS = 2        # 소리 동안 무지개를 몇 번 돌지
+LED_HOLD_SEC = 2.0       # 소리가 끝나고 LED를 이만큼 더 켜 둔 뒤 끔
+NOTE_GAP = 0.03          # 음 사이 살짝 끊음
+LCD_BLACK = True         # 끝나면 LCD를 검은 화면으로 (백라이트는 끄지 않음)
 
 BG = {'welcome': (255, 232, 120), 'arrived': (190, 236, 255)}
 FACE = (255, 205, 45)
@@ -141,31 +142,29 @@ def _stop_rainbow():
         t.join(timeout=1.0)
 
 
-def _rainbow_then_off(led, start, hold, stop, log):
-    """멜로디 뒤: hold 초 동안 무지개로 돌다가 끔. stop이 켜지면 바로 그만 (다음 효과가 LED를 씀)"""
-    i = start
-    end = time.monotonic() + hold
+def _hold_then_off(led, hold, stop, log):
+    """소리 뒤: 마지막 색 그대로 hold 초 -> 끔. stop이 켜지면 그만 (다음 효과가 LED를 씀)"""
     try:
-        while time.monotonic() < end and not stop.is_set():
-            led.fill(RAINBOW[i % len(RAINBOW)])
-            led.show()
-            i += 1
-            stop.wait(LED_STEP_SEC)
-        if not stop.is_set():
+        if not stop.wait(hold):
             led.fill((0, 0, 0))
             led.show()
     except Exception as e:  # noqa: BLE001
         log(f'LED 끄기 실패: {e}')
 
 
-def _lcd_off(lcd):
+def _lcd_black(lcd):
     from PIL import Image
     lcd.img_show(Image.new('RGB', (W, H), (0, 0, 0)))
-    lcd.set_backlight(0)
+
+
+def rainbow_at(elapsed, total, loops=RAINBOW_LOOPS):
+    """소리 시작부터 elapsed초일 때 LED 색 번호 (0 ~ 7*loops-1)"""
+    n = len(RAINBOW) * loops
+    return min(n - 1, int(elapsed / max(total, 1e-3) * n))
 
 
 def play(kind, log=print, hold=None):
-    """효과 한 번. 멜로디가 끝나면 돌아온다 (LED는 뒤에서 hold초 더 돌다 꺼짐). -> LED 스레드 (없으면 None)"""
+    """효과 한 번. 소리가 끝나면 돌아온다 (LED는 뒤에서 hold초 뒤 꺼짐). -> LED 끄는 스레드 (없으면 None)"""
     global _led_thread
     try:
         from pinkylib import LED, Buzzer
@@ -184,11 +183,25 @@ def play(kind, log=print, hold=None):
         led = LED()
         b = Buzzer()
         b.buzzer_start()
-        i = 0
-        for i, ((hz, sec), fr) in enumerate(zip(notes, frames_for(kind))):
-            t0 = time.monotonic()
-            led.fill(RAINBOW[i % len(RAINBOW)])                # 음마다 다음 무지개 색 (쉼표에서도 바뀜)
-            led.show()
+        total = sum(sec + NOTE_GAP for _, sec in notes)       # 소리 전체 길이 -> 무지개 2바퀴를 여기에 고르게
+        start = time.monotonic()
+        shown = [-1]
+
+        def led_until(t_end):
+            """t_end까지 기다리며 LED를 무지개 차례대로 (색이 바뀔 때만 보냄)"""
+            while True:
+                now = time.monotonic()
+                k = rainbow_at(now - start, total)
+                if k != shown[0]:
+                    led.fill(RAINBOW[k % len(RAINBOW)])
+                    led.show()
+                    shown[0] = k
+                if now >= t_end:
+                    return
+                time.sleep(min(0.02, t_end - now))
+
+        t_note = start
+        for (hz, sec), fr in zip(notes, frames_for(kind)):
             if hz:
                 b.set_buzzer_freq(hz)
                 b.set_buzzer_duty(35)
@@ -196,15 +209,19 @@ def play(kind, log=print, hold=None):
                 b.set_buzzer_duty(0)
             if fr is not None and fr in imgs:
                 lcd.img_show(imgs[fr])                       # LCD 그리는 시간도 음 길이 안에서
-            time.sleep(max(0.0, sec - (time.monotonic() - t0)))
+            t_note += sec
+            led_until(t_note)
             b.set_buzzer_duty(0)
-            time.sleep(.03)                                   # 음 사이 살짝 끊어서 또렷하게
+            t_note += NOTE_GAP                                # 음 사이 살짝 끊어서 또렷하게
+            led_until(t_note)
         b.buzzer_stop()
         b.clean()
-        if LCD_OFF:
-            _lcd_off(lcd)                                     # 멜로디 끝 = 얼굴 끔
+        led.fill(RAINBOW[-1])                                 # 2바퀴 끝 = 보라 (마지막 색 그대로 둠)
+        led.show()
+        if LCD_BLACK:
+            _lcd_black(lcd)                                   # 소리 끝 = 얼굴 지우고 검은 화면
         stop = threading.Event()
-        t = threading.Thread(target=_rainbow_then_off, args=(led, i + 1, hold, stop, log), daemon=True)
+        t = threading.Thread(target=_hold_then_off, args=(led, hold, stop, log), daemon=True)
         with _led_lock:
             globals()['_led_stop'] = stop
             _led_thread = t
@@ -275,10 +292,10 @@ def main():
             if kind not in MELODY:
                 sys.exit(f'모르는 효과: {kind} (welcome / arrived / both, 또는 --preview <폴더>)')
             total = sum(s + .03 for _, s in MELODY[kind])
-            print(f'▶ {kind}: 웃는 얼굴 애니메이션 · 무지개 LED · 멜로디 {len(MELODY[kind])}음 ({total:.1f}초)')
+            print(f'▶ {kind}: 웃는 얼굴 애니메이션 · 무지개 LED {RAINBOW_LOOPS}바퀴 · 멜로디 {len(MELODY[kind])}음 ({total:.1f}초)')
             t0 = time.monotonic()
             led_t = play(kind)
-            print(f'  멜로디 끝 ({time.monotonic() - t0:.1f}초): LCD 꺼짐, LED는 무지개로 {LED_HOLD_SEC:.0f}초 더')
+            print(f'  소리 끝 ({time.monotonic() - t0:.1f}초): LCD 검은 화면, LED는 {LED_HOLD_SEC:.0f}초 뒤 꺼짐')
             if led_t and kind == kinds_all[-1]:
                 try:
                     led_t.join()                                 # 마지막 효과는 LED가 꺼질 때까지 기다림
