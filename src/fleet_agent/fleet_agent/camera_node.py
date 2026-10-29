@@ -5,7 +5,7 @@
   guide_node (안내 손님 YOLO) · detect_view (인식 튜닝)  -> 구독
 
 보냄  /camera/image_raw             sensor_msgs/Image, bgr8 (rotate_180이면 돌려서 = 똑바로 선 영상)
-      /camera/image_raw/compressed  sensor_msgs/CompressedImage jpeg (publish_compressed: true일 때, PC에서 보기용)
+      /camera/image_raw/compressed  sensor_msgs/CompressedImage jpeg (PC guide_view용, 구독자가 있을 때만 압축)
 
   ros2 run fleet_agent camera_node                                  # 혼자
   fleet_agent.launch.xml / robot_system.launch.xml 은 use_camera:=true (기본)로 같이 띄움
@@ -37,7 +37,7 @@ class CameraNode(Node):
         self.rotate = bool(p('rotate_180', True).value)
         self.topic = p('topic', TOPIC).value
         self.frame_id = p('frame_id', 'camera_link').value
-        self.compressed = bool(p('publish_compressed', False).value)
+        self.compressed = bool(p('publish_compressed', True).value)   # 보는 쪽(guide_view)이 있을 때만 압축
         self.jpeg_quality = int(p('jpeg_quality', 70).value)
 
         self.pub = self.create_publisher(Image, self.topic, qos_profile_sensor_data)

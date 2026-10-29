@@ -90,6 +90,15 @@ ros2 run fleet_agent detect_view --save /tmp/det --every 5   # 박스 그린 사
 
 PC에서 사진으로: `python3 -m fleet_agent.detect_view --image ./photos`, 웹캠: `--webcam 0`
 
+**PC 화면으로 보기 (`guide_view`)**: 로봇과 같은 `ROS_DOMAIN_ID`인 PC에서
+```bash
+pip install ultralytics                    # PC에 한 번
+ros2 run fleet_agent guide_view            # 압축 영상 받아 PC에서 YOLO, 박스 · conf · 찾음 판정 · 로봇 안내 요청/결과
+```
+- 초록 박스 = 기준 conf 넘은 손님, 주황 = 손님인데 conf 모자람, 회색 = 다른 물체. 찾음이면 화면 테두리 초록
+- `[` `]` conf 바꿔 보기 (정한 값은 `fleet_agent.yaml` guide `conf`에 옮김), `s` 화면 저장, `p` 멈춤, `q` 끝
+- 로봇 안내 요청은 guide 노드(guide_node · fake_guide)가 떠 있은 뒤에 guide_view를 켜야 보인다
+
 ### 1-3. guide_node 단독
 
 ```bash
